@@ -70,7 +70,7 @@ fn move_tiles(
     let current_time = time.seconds_since_startup();
 
     for (mut last_update, mut tile_storage) in last_update_query.iter_mut() {
-        if (current_time - last_update.value) > 0.1 {
+        if (current_time - last_update.value) > 0.5 {
             for x in 0..bound.x {
                 for y in 0..bound.y {
                     let tile_pos = TilePos2d { x: x, y: y };
