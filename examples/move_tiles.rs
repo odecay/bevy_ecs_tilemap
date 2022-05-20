@@ -7,7 +7,6 @@ use bevy_ecs_tilemap::{
     tiles::{Tile2dStorage, TileBundle, TilePos2d},
     Tilemap2dPlugin, TilemapBundle,
 };
-use rand::{thread_rng, Rng};
 
 mod helpers;
 
@@ -61,34 +60,8 @@ struct LastUpdate {
     value: f64,
 }
 
-fn remove_tiles(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut last_update_query: Query<(&mut LastUpdate, &mut Tile2dStorage)>,
-) {
-    let current_time = time.seconds_since_startup();
-    for (mut last_update, mut tile_storage) in last_update_query.iter_mut() {
-        // Remove a tile every half second.
-        if (current_time - last_update.value) > 0.1 {
-            let mut random = thread_rng();
-            let position = TilePos2d {
-                x: random.gen_range(0..4),
-                y: random.gen_range(0..8),
-            };
-
-            if let Some(tile_entity) = tile_storage.get(&position) {
-                commands.entity(tile_entity).despawn_recursive();
-                // Don't forget to remove tiles from the tile storage!
-                tile_storage.set(&position, None);
-            }
-
-            last_update.value = current_time;
-        }
-    }
-}
-
-fn gravity(
-    mut query: Query<(&mut TilePos2d)>,
+fn move_tiles(
+    mut query: Query<&mut TilePos2d>,
     size: Query<&Tilemap2dSize>,
     time: Res<Time>,
     mut last_update_query: Query<(&mut LastUpdate, &mut Tile2dStorage)>,
@@ -135,7 +108,6 @@ fn main() {
         .add_startup_system(startup)
         .add_system(helpers::camera::movement)
         .add_system(helpers::texture::set_texture_filters_to_nearest)
-        // .add_system(remove_tiles)
-        .add_system(gravity)
+        .add_system(move_tiles)
         .run();
 }
