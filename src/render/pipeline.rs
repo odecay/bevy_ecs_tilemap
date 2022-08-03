@@ -4,19 +4,22 @@ use bevy::{
     render::{
         render_resource::{
             BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-            BlendComponent, BlendFactor, BlendOperation, BlendState, BufferBindingType, BufferSize,
+            BlendComponent, BlendFactor, BlendOperation, BlendState, BufferBindingType,
             ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState,
             PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipelineDescriptor,
-            SamplerBindingType, ShaderStages, SpecializedRenderPipeline, TextureFormat,
+            SamplerBindingType, ShaderStages, ShaderType, SpecializedRenderPipeline, TextureFormat,
             TextureSampleType, TextureViewDimension, VertexBufferLayout, VertexFormat, VertexState,
             VertexStepMode,
         },
         renderer::RenderDevice,
         texture::BevyDefault,
+        view::ViewUniform,
     },
 };
 
 use crate::map::{HexType, IsoType, TilemapMeshType};
+
+use super::{chunk::TilemapUniformData, prepare::MeshUniform};
 
 pub const SQUARE_SHADER_HANDLE: HandleUntyped =
     HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 8094008129742001941);
@@ -61,7 +64,7 @@ impl FromWorld for TilemapPipeline {
                         has_dynamic_offset: true,
                         // TODO: change this to ViewUniform::std140_size_static once crevice fixes this!
                         // Context: https://github.com/LPGhatguy/crevice/issues/29
-                        min_binding_size: BufferSize::new(144),
+                        min_binding_size: Some(ViewUniform::min_size()),
                     },
                     count: None,
                 },
@@ -78,7 +81,7 @@ impl FromWorld for TilemapPipeline {
                     has_dynamic_offset: true,
                     // TODO: change this to MeshUniform::std140_size_static once crevice fixes this!
                     // Context: https://github.com/LPGhatguy/crevice/issues/29
-                    min_binding_size: BufferSize::new(64),
+                    min_binding_size: Some(MeshUniform::min_size()),
                 },
                 count: None,
             }],
@@ -88,41 +91,41 @@ impl FromWorld for TilemapPipeline {
         let uniform_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             entries: &[BindGroupLayoutEntry {
                 binding: 0,
-                visibility: ShaderStages::VERTEX,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: true,
-                    min_binding_size: BufferSize::new(56),
+                    min_binding_size: Some(TilemapUniformData::min_size()),
                 },
                 count: None,
             }],
             label: Some("tilemap_material_layout"),
         });
 
-        // #[cfg(not(feature = "atlas"))]
-        // let material_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-        //     entries: &[
-        //         BindGroupLayoutEntry {
-        //             binding: 0,
-        //             visibility: ShaderStages::FRAGMENT,
-        //             ty: BindingType::Texture {
-        //                 multisampled: false,
-        //                 sample_type: TextureSampleType::Float { filterable: true },
-        //                 view_dimension: TextureViewDimension::D2Array,
-        //             },
-        //             count: None,
-        //         },
-        //         BindGroupLayoutEntry {
-        //             binding: 1,
-        //             visibility: ShaderStages::FRAGMENT,
-        //             ty: BindingType::Sampler(SamplerBindingType::Filtering),
-        //             count: None,
-        //         },
-        //     ],
-        //     label: Some("tilemap_material_layout"),
-        // });
+        #[cfg(not(feature = "atlas"))]
+        let material_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        multisampled: false,
+                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2Array,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("tilemap_material_layout"),
+        });
 
-        // #[cfg(feature = "atlas")]
+        #[cfg(feature = "atlas")]
         let material_layout = render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             entries: &[
                 BindGroupLayoutEntry {
@@ -166,7 +169,6 @@ impl SpecializedRenderPipeline for TilemapPipeline {
         let shader = match key.mesh_type {
             TilemapMeshType::Square => SQUARE_SHADER_HANDLE.typed::<Shader>(),
             TilemapMeshType::Isometric(iso_type) => match iso_type {
-                IsoType::Diamond3d => ISO_DIAMOND_SHADER_HANDLE.typed::<Shader>(),
                 IsoType::Diamond => ISO_DIAMOND_SHADER_HANDLE.typed::<Shader>(),
                 IsoType::Staggered => ISO_STAGGERED_SHADER_HANDLE.typed::<Shader>(),
             },
@@ -203,7 +205,7 @@ impl SpecializedRenderPipeline for TilemapPipeline {
                 shader,
                 shader_defs: vec![],
                 entry_point: "fragment".into(),
-                targets: vec![ColorTargetState {
+                targets: vec![Some(ColorTargetState {
                     format: TextureFormat::bevy_default(),
                     blend: Some(BlendState {
                         color: BlendComponent {
@@ -218,7 +220,7 @@ impl SpecializedRenderPipeline for TilemapPipeline {
                         },
                     }),
                     write_mask: ColorWrites::ALL,
-                }],
+                })],
             }),
             layout: Some(vec![
                 self.view_layout.clone(),

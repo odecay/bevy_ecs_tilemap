@@ -2,10 +2,10 @@ use std::hash::{Hash, Hasher};
 
 use bevy::{
     math::{UVec2, UVec3, UVec4, Vec2, Vec3Swizzles, Vec4, Vec4Swizzles},
-    prelude::{Component, Entity, Mesh, Transform},
+    prelude::{Component, Entity, GlobalTransform, Mesh, Vec3},
     render::{
         mesh::{GpuBufferInfo, GpuMesh, Indices, VertexAttributeValues},
-        render_resource::{std140::AsStd140, BufferInitDescriptor, BufferUsages},
+        render_resource::{BufferInitDescriptor, BufferUsages, ShaderType},
         renderer::RenderDevice,
     },
     utils::HashMap,
@@ -38,7 +38,7 @@ impl RenderChunk2dStorage {
         spacing: Vec2,
         texture: TilemapTexture,
         map_size: Tilemap2dSize,
-        transform: Transform,
+        transform: GlobalTransform,
     ) -> &mut RenderChunk2d {
         let pos = position.xyz();
 
@@ -82,8 +82,6 @@ impl RenderChunk2dStorage {
     }
 
     pub fn get_mut_from_entity(&mut self, entity: Entity) -> Option<(&mut RenderChunk2d, UVec2)> {
-        // dbg!(&self.entity_to_chunk_tile);
-
         if !self.entity_to_chunk_tile.contains_key(&entity) {
             return None;
         }
@@ -151,7 +149,7 @@ pub struct RenderChunk2d {
     pub mesh: Mesh,
     pub gpu_mesh: Option<GpuMesh>,
     pub dirty_mesh: bool,
-    pub transform: Transform,
+    pub transform: GlobalTransform,
 }
 
 impl RenderChunk2d {
@@ -166,7 +164,7 @@ impl RenderChunk2d {
         texture: TilemapTexture,
         texture_size: Vec2,
         map_size: Tilemap2dSize,
-        transform: Transform,
+        transform: GlobalTransform,
     ) -> Self {
         Self {
             dirty_mesh: true,
@@ -247,7 +245,8 @@ impl RenderChunk2d {
                 // let tile_flip_bits =
                 //     tile.flip_x as i32 | (tile.flip_y as i32) << 1 | (tile.flip_d as i32) << 2;
 
-                let texture: [f32; 4] = tile.texture.xyxx().into();
+                //let texture: [f32; 4] = tile.texture.xyxx().into();
+                let texture: [f32; 4] = tile.texture.to_array();
                 textures.extend([texture, texture, texture, texture].into_iter());
 
                 indices.extend_from_slice(&[i + 0, i + 2, i + 1, i + 0, i + 3, i + 2]);
@@ -303,7 +302,7 @@ impl RenderChunk2d {
 }
 
 // Used to transfer info to the GPU for tile building.
-#[derive(Debug, Default, Copy, Component, Clone, AsStd140)]
+#[derive(Debug, Default, Copy, Component, Clone, ShaderType)]
 pub struct TilemapUniformData {
     pub texture_size: Vec2,
     pub tile_size: Vec2,
@@ -312,6 +311,7 @@ pub struct TilemapUniformData {
     pub chunk_pos: Vec2,
     pub map_size: Vec2,
     pub time: f32,
+    pub pad: Vec3,
 }
 
 impl From<&RenderChunk2d> for TilemapUniformData {
@@ -327,6 +327,7 @@ impl From<&RenderChunk2d> for TilemapUniformData {
             chunk_pos: chunk_pos * chunk_size,
             map_size: map_size * chunk.tile_size,
             time: 0.0,
+            pad: Vec3::ZERO,
         }
     }
 }
@@ -344,6 +345,7 @@ impl From<&mut RenderChunk2d> for TilemapUniformData {
             chunk_pos: chunk_pos * chunk_size,
             map_size: map_size * chunk.tile_size,
             time: 0.0,
+            pad: Vec3::ZERO,
         }
     }
 }

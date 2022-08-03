@@ -1,14 +1,15 @@
 use std::marker::PhantomData;
 
 use bevy::{
-    math::{const_uvec2, Mat4, UVec2, UVec4, Vec3Swizzles},
-    prelude::{Commands, Component, Entity, Query, Res, ResMut, Transform},
+    math::{Mat4, UVec2, UVec4, Vec3Swizzles},
+    prelude::{Commands, Component, Entity, GlobalTransform, Query, Res, ResMut, Transform},
     render::{
-        render_resource::{std140::AsStd140, DynamicUniformVec},
+        render_resource::{DynamicUniformBuffer, ShaderType},
         renderer::{RenderDevice, RenderQueue},
     },
 };
 
+use crate::render::SecondsSinceStartup;
 use crate::{
     helpers::get_chunk_2d_transform,
     map::{
@@ -18,7 +19,7 @@ use crate::{
     tiles::TilePos2d,
 };
 
-pub const CHUNK_SIZE_2D: UVec2 = const_uvec2!([64, 64]);
+pub const CHUNK_SIZE_2D: UVec2 = UVec2::from_array([64, 64]);
 
 fn map_tile_to_chunk(tile_position: &TilePos2d) -> UVec2 {
     let tile_pos: UVec2 = tile_position.into();
@@ -36,7 +37,7 @@ use super::{
     DynamicUniformIndex,
 };
 
-#[derive(AsStd140, Component, Clone)]
+#[derive(ShaderType, Component, Clone)]
 pub struct MeshUniform {
     pub transform: Mat4,
 }
@@ -44,12 +45,12 @@ pub struct MeshUniform {
 pub fn prepare(
     mut commands: Commands,
     mut chunk_storage: ResMut<RenderChunk2dStorage>,
-    mut mesh_uniforms: ResMut<DynamicUniformVec<MeshUniform>>,
-    mut tilemap_uniforms: ResMut<DynamicUniformVec<TilemapUniformData>>,
+    mut mesh_uniforms: ResMut<DynamicUniformBuffer<MeshUniform>>,
+    mut tilemap_uniforms: ResMut<DynamicUniformBuffer<TilemapUniformData>>,
     extracted_tiles: Query<&ExtractedTile>,
     extracted_tilemaps: Query<(
         Entity,
-        &Transform,
+        &GlobalTransform,
         &Tilemap2dTileSize,
         &Tilemap2dTextureSize,
         &Tilemap2dSpacing,
@@ -59,6 +60,7 @@ pub fn prepare(
     )>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
+    seconds_since_startup: Res<SecondsSinceStartup>,
 ) {
     for tile in extracted_tiles.iter() {
         let chunk_pos = map_tile_to_chunk(&tile.position);
@@ -68,7 +70,7 @@ pub fn prepare(
         let chunk_data = UVec4::new(
             chunk_pos.x,
             chunk_pos.y,
-            transform.translation.z as u32,
+            transform.translation().z as u32,
             tile.tilemap_id.0.id(),
         );
 
@@ -90,11 +92,20 @@ pub fn prepare(
             Some(PackedTileData {
                 position: map_tile_to_chunk_tile(&tile.position, &chunk_pos)
                     .as_vec2()
-                    .extend(0.0)
-                    .extend(0.0),
+                    .extend(tile.tile.position.z)
+                    .extend(tile.tile.position.w),
                 ..tile.tile
             }),
         );
+    }
+
+    // Copies transform changes from tilemap to chunks.
+    for (entity, transform, _, _, _, mesh_type, _, _) in extracted_tilemaps.iter() {
+        let chunks = chunk_storage.get_chunk_storage(&UVec4::new(0, 0, 0, entity.id()));
+        for chunk in chunks.values_mut() {
+            chunk.mesh_type = *mesh_type;
+            chunk.transform = *transform;
+        }
     }
 
     mesh_uniforms.clear();
@@ -103,15 +114,18 @@ pub fn prepare(
     for chunk in chunk_storage.iter_mut() {
         chunk.prepare(&render_device);
 
+        let chunk_global_transform: Transform = chunk.transform.into();
+
         let transform = get_chunk_2d_transform(
             chunk.position.as_vec3().xy(),
             chunk.tile_size,
             chunk.size.as_vec2(),
             0,
             chunk.mesh_type,
-        ) * chunk.transform;
+        ) * chunk_global_transform;
 
-        let chunk_uniform: TilemapUniformData = chunk.into();
+        let mut chunk_uniform: TilemapUniformData = chunk.into();
+        chunk_uniform.time = **seconds_since_startup;
 
         commands
             .spawn()

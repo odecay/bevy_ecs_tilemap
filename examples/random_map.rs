@@ -2,37 +2,31 @@ use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
 };
-use bevy_ecs_tilemap::{
-    map::{
-        Tilemap2dGridSize, Tilemap2dSize, Tilemap2dTextureSize, Tilemap2dTileSize, TilemapId,
-        TilemapTexture,
-    },
-    tiles::{Tile2dStorage, TilePos2d, TileTexture, TileVisible},
-    Tilemap2dPlugin, TilemapBundle,
-};
+use bevy_ecs_tilemap::prelude::*;
 use rand::{thread_rng, Rng};
 
 mod helpers;
 
 fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn_bundle(Camera2dBundle::default());
 
     let texture_handle: Handle<Image> = asset_server.load("tiles.png");
 
-    let tilemap_size = Tilemap2dSize { x: 640, y: 640 };
+    let tilemap_size = Tilemap2dSize { x: 320, y: 320 };
     let mut tile_storage = Tile2dStorage::empty(tilemap_size);
     let tilemap_entity = commands.spawn().id();
 
-    for x in 0..640u32 {
-        for y in 0..640u32 {
+    for x in 0..320u32 {
+        for y in 0..320u32 {
             let tile_pos = TilePos2d { x, y };
             let tile_entity = commands
                 .spawn()
-                .insert(tile_pos)
-                .insert(TileTexture(0))
-                .insert(TilemapId(tilemap_entity))
+                .insert_bundle(TileBundle {
+                    position: tile_pos,
+                    tilemap_id: TilemapId(tilemap_entity),
+                    ..Default::default()
+                })
                 .insert(LastUpdate::default())
-                .insert(TileVisible(true))
                 .id();
             tile_storage.set(&tile_pos, Some(tile_entity));
         }

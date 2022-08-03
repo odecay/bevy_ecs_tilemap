@@ -1,22 +1,28 @@
 use bevy::{
-    core::FloatOrd,
-    core_pipeline::Transparent2d,
+    core_pipeline::core_2d::Transparent2d,
     math::UVec4,
     prelude::{Commands, Component, Entity, Handle, Image, Msaa, Query, Res, ResMut, Transform},
     render::{
         render_asset::RenderAssets,
         render_phase::{DrawFunctions, RenderPhase},
         render_resource::{
-            BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, DynamicUniformVec,
+            BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, DynamicUniformBuffer,
             PipelineCache, SpecializedRenderPipelines,
         },
         renderer::RenderDevice,
         view::{ExtractedView, ViewUniforms},
     },
+    utils::FloatOrd,
     utils::HashMap,
 };
 
 use crate::map::TilemapId;
+
+#[cfg(not(feature = "atlas"))]
+use bevy::render::renderer::RenderQueue;
+
+#[cfg(not(feature = "atlas"))]
+use super::texture_array_cache::TextureArrayCache;
 
 use super::{
     chunk::{ChunkId, RenderChunk2dStorage, TilemapUniformData},
@@ -33,7 +39,7 @@ pub fn queue_transform_bind_group(
     mut commands: Commands,
     tilemap_pipeline: Res<TilemapPipeline>,
     render_device: Res<RenderDevice>,
-    transform_uniforms: Res<DynamicUniformVec<MeshUniform>>,
+    transform_uniforms: Res<DynamicUniformBuffer<MeshUniform>>,
 ) {
     if let Some(binding) = transform_uniforms.binding() {
         commands.insert_resource(TransformBindGroup {
@@ -57,7 +63,7 @@ pub fn queue_tilemap_bind_group(
     mut commands: Commands,
     tilemap_pipeline: Res<TilemapPipeline>,
     render_device: Res<RenderDevice>,
-    tilemap_uniforms: Res<DynamicUniformVec<TilemapUniformData>>,
+    tilemap_uniforms: Res<DynamicUniformBuffer<TilemapUniformData>>,
 ) {
     if let Some(binding) = tilemap_uniforms.binding() {
         commands.insert_resource(TilemapUniformDataBindGroup {
@@ -98,11 +104,11 @@ pub fn queue_meshes(
     mut image_bind_groups: ResMut<ImageBindGroups>,
     standard_tilemap_meshes: Query<(Entity, &ChunkId, &Transform, &TilemapId)>,
     mut views: Query<(Entity, &ExtractedView, &mut RenderPhase<Transparent2d>)>,
-    // #[cfg(not(feature = "atlas"))] mut texture_array_cache: ResMut<TextureArrayCache>,
-    // #[cfg(not(feature = "atlas"))] render_queue: Res<RenderQueue>,
+    #[cfg(not(feature = "atlas"))] mut texture_array_cache: ResMut<TextureArrayCache>,
+    #[cfg(not(feature = "atlas"))] render_queue: Res<RenderQueue>,
 ) {
-    // #[cfg(not(feature = "atlas"))]
-    // texture_array_cache.queue(&render_device, &render_queue, &gpu_images);
+    #[cfg(not(feature = "atlas"))]
+    texture_array_cache.queue(&render_device, &render_queue, &gpu_images);
 
     if let Some(view_binding) = view_uniforms.uniforms.binding() {
         for (entity, _view, mut transparent_phase) in views.iter_mut() {
@@ -125,11 +131,6 @@ pub fn queue_meshes(
                 .unwrap();
 
             for (entity, chunk_id, transform, tilemap_id) in standard_tilemap_meshes.iter() {
-                // #[cfg(not(feature = "atlas"))]
-                // if !texture_array_cache.contains(image) {
-                //     continue;
-                // }
-
                 let chunk = chunk_storage.get(&UVec4::new(
                     chunk_id.0.x,
                     chunk_id.0.y,
@@ -137,7 +138,12 @@ pub fn queue_meshes(
                     tilemap_id.0.id(),
                 ));
 
-                // #[cfg(feature = "atlas")]
+                #[cfg(not(feature = "atlas"))]
+                if !texture_array_cache.contains(&chunk.texture.0) {
+                    continue;
+                }
+
+                #[cfg(feature = "atlas")]
                 if gpu_images.get(&chunk.texture.0).is_none() {
                     continue;
                 }
@@ -146,9 +152,9 @@ pub fn queue_meshes(
                     .values
                     .entry(chunk.texture.0.clone_weak())
                     .or_insert_with(|| {
-                        // #[cfg(not(feature = "atlas"))]
-                        // let gpu_image = texture_array_cache.get(&image);
-                        // #[cfg(feature = "atlas")]
+                        #[cfg(not(feature = "atlas"))]
+                        let gpu_image = texture_array_cache.get(&chunk.texture.0);
+                        #[cfg(feature = "atlas")]
                         let gpu_image = gpu_images.get(&chunk.texture.0).unwrap();
                         render_device.create_bind_group(&BindGroupDescriptor {
                             entries: &[

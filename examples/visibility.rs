@@ -1,18 +1,11 @@
 use bevy::prelude::*;
-use bevy_ecs_tilemap::{
-    map::{
-        Tilemap2dGridSize, Tilemap2dSize, Tilemap2dTextureSize, Tilemap2dTileSize, TilemapId,
-        TilemapTexture,
-    },
-    tiles::{Tile2dStorage, TileBundle, TilePos2d, TileVisible},
-    Tilemap2dPlugin, TilemapBundle,
-};
+use bevy_ecs_tilemap::prelude::*;
 use rand::{thread_rng, Rng};
 
 mod helpers;
 
 fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn_bundle(Camera2dBundle::default());
 
     let texture_handle: Handle<Image> = asset_server.load("tiles.png");
 
